@@ -1,0 +1,17 @@
+module AnyCable
+  module BroadcastAdapters
+    class Postgres < Base
+      attr_reader connection: untyped
+      attr_reader channel: String
+      attr_reader use_rails_connection: bool
+
+      def initialize: (?channel: String channel, **untyped options) -> void
+      def close: () -> void
+
+      private
+      attr_writer connection: untyped
+      def rails_available?: () -> bool
+      def with_rails_connection: () { (untyped) -> void } -> void
+    end
+  end
+end

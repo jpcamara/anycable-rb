@@ -40,6 +40,10 @@ module AnyCable
     def http_broadcast_url=: (String) -> void
     def http_broadcast_secret: () -> String?
     def http_broadcast_secret=: (String) -> void
+    def postgres_url: () -> String
+    def postgres_url=: (String) -> void
+    def postgres_channel: () -> String
+    def postgres_channel=: (String) -> void
     def log_file: () -> String?
     def log_file=: (String) -> void
     def log_level: () -> String
@@ -81,10 +85,12 @@ module AnyCable
     def to_redis_params: () -> { url: String, sentinels: Array[untyped]?, ssl_params: Hash[Symbol, untyped]? }
     def to_http_health_params: () -> { port: Integer?, path: String }
     def to_nats_params: () -> Hash[Symbol, untyped]
+    def to_postgres_params: () -> Hash[Symbol, untyped]
 
     private
 
     def parse_sentinel: (untyped sentinel) -> Hash[Symbol, untyped]
+    def default_postgres_url: () -> String
     def load_presets: () -> void
     def detect_presets: () -> Array[String]
     def write_preset: (Symbol, untyped, preset: String) -> void

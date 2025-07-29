@@ -59,6 +59,12 @@ module AnyCable
       # DEPRECATED: use `broadcast_key` instead
       http_broadcast_secret: nil,
 
+      ### PostgreSQL options
+      postgres_url: ENV.fetch("DATABASE_URL", "postgres://localhost:5432/postgres"),
+      postgres_channel: "__anycable__",
+      postgres_large_payload_threshold: 8000,
+      postgres_large_payload_table: "anycable_large_payloads",
+
       ### Logging options
       log_file: nil,
       log_level: "info",
@@ -158,6 +164,10 @@ module AnyCable
       HTTP RPC
           --http-rpc-secret                 HTTP RPC authorization secret, default: <none> (inferred from the application secret if any)
 
+      POSTGRESQL
+          --postgres-url=url                PostgreSQL URL for broadcasting, default: DATABASE_URL or "postgres://localhost:5432/postgres"
+          --postgres-channel=name           PostgreSQL channel for broadcasting, default: "__anycable__"
+
       LOGGING
           --log-level=level                 Logging level, default: "info"
           --log-file=path                   Path to log file, default: <none> (log to STDOUT)
@@ -212,6 +222,31 @@ module AnyCable
         port: http_health_port,
         path: http_health_path
       }
+    end
+
+    # Build PostgreSQL connection parameters
+    def to_postgres_params
+      require "uri"
+
+      # Use Rails database config if available, otherwise fall back to configured URL
+      url = postgres_url || default_postgres_url
+
+      # @type var uri: URI::Generic
+      uri = URI.parse(url)
+
+      {}.tap do |params|
+        params[:host] = uri.host if uri.host
+        params[:port] = uri.port if uri.port
+        params[:dbname] = uri.path&.sub(/^\//, "") if uri.path && !uri.path.empty? && uri.path != "/"
+        params[:user] = uri.user if uri.user
+        params[:password] = uri.password if uri.password
+
+        # Parse query parameters for additional options
+        if uri.query
+          query_params = URI.decode_www_form(uri.query).to_h
+          params.merge!(query_params.transform_keys(&:to_sym))
+        end
+      end
     end
 
     private
@@ -270,6 +305,31 @@ module AnyCable
       require "openssl"
 
       OpenSSL::HMAC.hexdigest("SHA256", app_secret, phrase)
+    end
+
+    def default_postgres_url
+      # In Rails environment, try to use the database configuration
+      if defined?(::Rails) && defined?(::ActiveRecord::Base)
+        begin
+          config = ::ActiveRecord::Base.connection_config
+          # Build URL from Rails database config
+          if config[:adapter] == "postgresql"
+            url_parts = []
+            url_parts << "postgres://"
+            if config[:username] || config[:password]
+              url_parts << "#{config[:username]}:#{config[:password]}@" if config[:username]
+            end
+            url_parts << "#{config[:host] || "localhost"}:#{config[:port] || 5432}"
+            url_parts << "/#{config[:database]}" if config[:database]
+            return url_parts.join
+          end
+        rescue
+          # Fall back to default if Rails config is not available
+        end
+      end
+
+      # Default fallback
+      ENV.fetch("DATABASE_URL", "postgres://localhost:5432/postgres")
     end
   end
 end

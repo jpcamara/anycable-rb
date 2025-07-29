@@ -25,6 +25,7 @@ describe "CLI options", :cli do
       expect(cli).to have_output_line("CLI")
       expect(cli).to have_output_line("APPLICATION")
       expect(cli).to have_output_line("REDIS")
+      expect(cli).to have_output_line("POSTGRESQL")
       expect(cli).to have_output_line("HTTP BROADCASTING")
       expect(cli).to have_output_line("LOGGING")
       expect(cli).to have_output_line("HTTP HEALTH CHECKER")
@@ -44,6 +45,16 @@ describe "CLI options", :cli do
         %(HTTP health server is listening on localhost:#{health_port} and mounted at "/hc")
       )
       expect(cli).to have_output_line("Broadcasting Redis channel: _test_cable_")
+    end
+  end
+
+  specify "postgres broadcast options" do
+    run_cli(
+      "-r ../spec/dummies/app.rb " \
+      "--broadcast-adapter postgres " \
+      "--postgres-channel _test_postgres_cable_ --debug"
+    ) do |cli|
+      expect(cli).to have_output_line("Broadcasting PostgreSQL channel: _test_postgres_cable_")
     end
   end
 
