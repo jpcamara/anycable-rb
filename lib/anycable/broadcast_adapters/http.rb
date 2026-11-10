@@ -72,6 +72,7 @@ module AnyCable
       def shutdown
         queue << :stop
         thread.join if thread&.alive?
+        close_connection
       rescue Exception => e # rubocop:disable Lint/RescueException
         logger.error "Broadcasting thread exited with exception: #{e.message}"
       end
@@ -118,13 +119,11 @@ module AnyCable
         retry_count = 0
 
         begin
-          http = Net::HTTP.new(uri.host, uri.port)
-          http.open_timeout = OPEN_TIMEOUT
-          http.read_timeout = READ_TIMEOUT
-          http.use_ssl = url.match?(/^https/)
-          http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-          yield http
-        rescue Timeout::Error, *RECOVERABLE_EXCEPTIONS => e
+          yield connection
+        rescue Timeout::Error, IOError, Errno::EPIPE, *RECOVERABLE_EXCEPTIONS => e
+          # The server may have closed the kept-alive connection. The next
+          # attempt opens a new one.
+          close_connection
           retry_count += 1
           if retry_count > MAX_ATTEMPTS
             logger.error("Broadcast request failed: #{e.message}")
@@ -133,9 +132,38 @@ module AnyCable
 
           sleep((DELAY**retry_count).to_int * retry_count)
           retry
-        ensure
-          http.finish if http.started?
         end
+      end
+
+      # One connection, kept open between broadcasts. A new connection per
+      # broadcast leaves a closed socket in TIME_WAIT each time, and at a few
+      # hundred broadcasts a second the host runs out of local ports. It also
+      # puts a TCP (and TLS) handshake in front of every broadcast.
+      #
+      # A forked process drops the connection it inherited without closing
+      # it, because the parent still uses that socket, and opens its own.
+      def connection
+        @connection = nil unless @connection_pid == Process.pid
+        @connection ||= begin
+          @connection_pid = Process.pid
+          http = Net::HTTP.new(uri.host, uri.port)
+          http.open_timeout = OPEN_TIMEOUT
+          http.read_timeout = READ_TIMEOUT
+          http.use_ssl = url.match?(/^https/)
+          http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+          http.start
+          http
+        end
+      end
+
+      def close_connection
+        return unless @connection_pid == Process.pid
+
+        @connection&.finish
+      rescue IOError
+        nil # already closed
+      ensure
+        @connection = nil
       end
     end
   end

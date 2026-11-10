@@ -26,6 +26,11 @@ module AnyCable
       def perform_request: (String payload) -> untyped
       def handle_response: (untyped response) -> void
       def build_http: () { (untyped) -> untyped } -> untyped
+      def connection: () -> Net::HTTP
+      def close_connection: () -> void
+
+      @connection: Net::HTTP?
+      @connection_pid: Integer?
     end
   end
 end

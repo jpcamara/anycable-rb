@@ -104,6 +104,47 @@ describe AnyCable::BroadcastAdapters::Http do
       end
     end
 
+    context "connection" do
+      before do
+        allow(Net::HTTP).to receive(:new).and_call_original
+        stub_request(:post, "http://ws.example.com:8090/_broadcast").to_return(status: 201)
+      end
+
+      it "sends every broadcast on one connection" do
+        subject.broadcast("notification", "hello!")
+        subject.broadcast("notification", "hi again!")
+        subject.shutdown
+
+        expect(a_request(:post, "http://ws.example.com:8090/_broadcast")).to have_been_made.twice
+        expect(Net::HTTP).to have_received(:new).once
+      end
+
+      it "reconnects when the server closed the connection" do
+        allow(adapter).to receive(:sleep)
+        allow(AnyCable.logger).to receive(:error)
+        stub_request(:post, "http://ws.example.com:8090/_broadcast")
+          .to_raise(EOFError).then
+          .to_return(status: 201)
+
+        subject.broadcast("notification", "hello!")
+        subject.shutdown
+
+        expect(AnyCable.logger).not_to have_received(:error)
+        expect(a_request(:post, "http://ws.example.com:8090/_broadcast")).to have_been_made.twice
+        expect(Net::HTTP).to have_received(:new).twice
+      end
+
+      it "opens a new connection in a forked process, leaving the parent's open" do
+        parent = adapter.send(:connection)
+        allow(Process).to receive(:pid).and_return(Process.pid + 1)
+
+        child = adapter.send(:connection)
+
+        expect(child).not_to equal(parent)
+        expect(parent).to be_started
+      end
+    end
+
     context "retries" do
       subject { adapter.broadcast("notification", "hello!") }
 
